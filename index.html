@@ -343,35 +343,41 @@ async function downloadAll() {
   document.getElementById('dlLabel').textContent = 'Preparing…';
   var good = results.filter(function(r){ return r.ok && r.buf; });
 
-  function triggerDownload(blob, filename) {
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.style.display = 'none';
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function() {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 1500);
-  }
+  // Download each file individually using base64 data URIs
+  // This avoids createObjectURL which can be blocked on corporate networks
+  for (var i = 0; i < good.length; i++) {
+    var r = good[i];
+    try {
+      // Convert ArrayBuffer to base64
+      var uint8 = new Uint8Array(r.buf);
+      var binary = '';
+      var chunkSize = 8192;
+      for (var j = 0; j < uint8.length; j += chunkSize) {
+        var chunk = uint8.subarray(j, j + chunkSize);
+        binary += String.fromCharCode.apply(null, chunk);
+      }
+      var base64 = btoa(binary);
+      var dataUri = 'data:application/pdf;base64,' + base64;
 
-  if (good.length === 1) {
-    var uint8 = new Uint8Array(good[0].buf);
-    var blob = new Blob([uint8], { type: 'application/pdf' });
-    triggerDownload(blob, good[0].newName);
-  } else {
-    var zip = new JSZip();
-    good.forEach(function(r) {
-      zip.file(r.newName, new Uint8Array(r.buf), { binary: true });
-    });
-    var blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
-    triggerDownload(blob, 'DBR_renamed_invoices.zip');
+      var a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = dataUri;
+      a.download = r.newName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // Small delay between multiple downloads
+      if (i < good.length - 1) {
+        await new Promise(function(resolve){ setTimeout(resolve, 500); });
+      }
+    } catch(e) {
+      console.error('Download failed for ' + r.newName + ':', e);
+    }
   }
 
   btn.disabled = false;
-  document.getElementById('dlLabel').textContent = good.length === 1 ? 'Download Renamed PDF' : 'Download ZIP (' + good.length + ' files)';
+  document.getElementById('dlLabel').textContent = good.length === 1 ? 'Download Renamed PDF' : 'Download All (' + good.length + ' files)';
 }
 
 function clearAll() {
