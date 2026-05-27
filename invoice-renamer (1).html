@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DB Roberts — Invoice Renamer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Barlow:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --red:     #860038;
+    --red-d:   #6a002c;
+    --red-t:   #fdf0f4;
+    --black:   #000000;
+    --dgray:   #3b3b3b;
+    --lgray:   #f0f0f0;
+    --white:   #ffffff;
+    --yellow:  #ffcf00;
+    --border:  #d8d8d8;
+    --ink:     #3b3b3b;
+    --muted:   #888;
+    --green:   #1a6b3c;
+    --green-t: #e8f5ec;
+    --green-l: #c8e6d4;
+    --err-t:   #fff0f3;
+    --err-l:   #ffd6e0;
+  }
+  *,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Barlow',sans-serif; background:var(--lgray); color:var(--ink); min-height:100vh; }
+
+  /* PASSWORD */
+  #pw-screen { position:fixed; inset:0; z-index:9999; background:var(--black); display:flex; align-items:center; justify-content:center; }
+  .pw-box { background:var(--dgray); border-top:4px solid var(--red); border-radius:4px; padding:48px; display:flex; flex-direction:column; align-items:center; gap:20px; max-width:380px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.6); }
+  .pw-dbr-logo { font-family:'Barlow Condensed',sans-serif; font-size:1.6rem; font-weight:800; color:var(--white); letter-spacing:0.05em; text-transform:uppercase; }
+  .pw-dbr-logo span { color:var(--red); }
+  .pw-tagline { font-family:'Barlow Condensed',sans-serif; font-size:0.72rem; color:#aaa; letter-spacing:0.15em; text-transform:uppercase; margin-top:-12px; }
+  .pw-box h2 { font-family:'Barlow Condensed',sans-serif; font-size:1.1rem; font-weight:600; color:#ccc; text-align:center; letter-spacing:0.08em; text-transform:uppercase; }
+  .pw-input { width:100%; padding:11px 16px; border-radius:3px; border:1px solid #555; background:#222; color:var(--white); font-family:'DM Mono',monospace; font-size:0.88rem; outline:none; text-align:center; letter-spacing:0.05em; transition:border-color 0.2s; }
+  .pw-input:focus { border-color:var(--red); }
+  .pw-btn { width:100%; padding:12px; border-radius:3px; border:none; background:var(--red); color:var(--white); font-family:'Barlow Condensed',sans-serif; font-size:1rem; font-weight:700; cursor:pointer; letter-spacing:0.1em; text-transform:uppercase; transition:background 0.15s; }
+  .pw-btn:hover { background:var(--red-d); }
+  .pw-error { font-size:0.72rem; color:#ff8fab; font-family:'DM Mono',monospace; min-height:1.1em; text-align:center; }
+
+  /* HEADER */
+  header { background:var(--black); border-bottom:4px solid var(--red); padding:0; }
+  .header-inner { max-width:900px; margin:0 auto; padding:18px 32px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  .dbr-wordmark { display:flex; flex-direction:column; gap:2px; }
+  .dbr-wordmark .name { font-family:'Barlow Condensed',sans-serif; font-size:1.8rem; font-weight:800; color:var(--white); letter-spacing:0.04em; line-height:1; text-transform:uppercase; }
+  .dbr-wordmark .name span { color:var(--red); }
+  .dbr-wordmark .tagline { font-family:'Barlow Condensed',sans-serif; font-size:0.68rem; color:#aaa; letter-spacing:0.18em; text-transform:uppercase; border-top:1px solid #444; padding-top:3px; margin-top:2px; }
+  .header-tool { text-align:right; }
+  .header-tool .tool-name { font-family:'Barlow Condensed',sans-serif; font-size:1rem; font-weight:700; color:var(--white); letter-spacing:0.1em; text-transform:uppercase; }
+  .header-tool .tool-sub { font-family:'DM Mono',monospace; font-size:0.62rem; color:#888; letter-spacing:0.05em; margin-top:2px; }
+
+  /* MAIN */
+  .main { max-width:900px; margin:0 auto; padding:36px 32px 60px; }
+
+  /* CONVENTION BOX */
+  .convention-box {
+    background:var(--white); border:1px solid var(--border); border-left:4px solid var(--red);
+    border-radius:3px; padding:16px 20px; margin-bottom:24px;
+    display:flex; align-items:center; gap:20px; flex-wrap:wrap;
+  }
+  .convention-box .cv-label { font-family:'Barlow Condensed',sans-serif; font-size:0.72rem; font-weight:700; color:var(--red); letter-spacing:0.12em; text-transform:uppercase; white-space:nowrap; }
+  .convention-box .cv-format { font-family:'DM Mono',monospace; font-size:0.88rem; color:var(--dgray); font-weight:500; }
+  .convention-box .cv-example { font-family:'DM Mono',monospace; font-size:0.72rem; color:var(--muted); }
+
+  /* DROP ZONE */
+  .drop-zone {
+    border:2px dashed var(--border); border-radius:3px;
+    background:var(--white); padding:52px 24px; text-align:center;
+    cursor:pointer; transition:all 0.2s; margin-bottom:24px; position:relative;
+  }
+  .drop-zone:hover, .drop-zone.over { border-color:var(--red); background:#fff8f9; }
+  .drop-zone input[type=file] { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+  .drop-icon { font-size:2.2rem; margin-bottom:10px; }
+  .drop-text { font-family:'Barlow Condensed',sans-serif; font-size:1.1rem; font-weight:700; color:var(--dgray); letter-spacing:0.05em; text-transform:uppercase; margin-bottom:6px; }
+  .drop-hint { font-family:'DM Mono',monospace; font-size:0.72rem; color:var(--muted); }
+
+  /* RESULTS */
+  .results-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:10px; }
+  .results-title { font-family:'Barlow Condensed',sans-serif; font-size:1.1rem; font-weight:800; color:var(--dgray); letter-spacing:0.06em; text-transform:uppercase; }
+  .results-stats { font-family:'DM Mono',monospace; font-size:0.72rem; color:var(--muted); }
+  .clear-btn { background:none; border:1px solid var(--border); border-radius:3px; padding:5px 12px; font-size:0.75rem; font-family:'Barlow Condensed',sans-serif; font-weight:600; letter-spacing:0.05em; text-transform:uppercase; color:var(--muted); cursor:pointer; transition:all 0.15s; }
+  .clear-btn:hover { border-color:var(--red); color:var(--red); }
+
+  .results-table { background:var(--white); border:1px solid var(--border); border-radius:3px; overflow:hidden; margin-bottom:20px; display:none; }
+  .results-table.visible { display:block; }
+  .rt-head { display:grid; grid-template-columns:1fr 1fr 110px; background:var(--dgray); padding:10px 16px; font-family:'Barlow Condensed',sans-serif; font-size:0.7rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:#ccc; }
+  .rt-row { display:grid; grid-template-columns:1fr 1fr 110px; padding:10px 16px; border-bottom:1px solid var(--lgray); align-items:center; gap:8px; }
+  .rt-row:last-child { border-bottom:none; }
+  .rt-row.ok:nth-child(even) { background:#fafafa; }
+  .rt-row.err { background:var(--err-t); }
+  .rt-row.processing { background:#fffef0; }
+  .fn-old { font-family:'DM Mono',monospace; font-size:0.7rem; color:var(--muted); word-break:break-all; }
+  .fn-new { font-family:'DM Mono',monospace; font-size:0.7rem; color:var(--green); font-weight:500; word-break:break-all; }
+  .fn-err { font-family:'DM Mono',monospace; font-size:0.7rem; color:var(--red); word-break:break-all; }
+
+  .status-pill { display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:2px; font-family:'Barlow Condensed',sans-serif; font-size:0.7rem; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; white-space:nowrap; }
+  .pill-ok   { background:var(--green-l); color:var(--green); }
+  .pill-err  { background:var(--err-l); color:var(--red); }
+  .pill-spin { background:var(--lgray); color:var(--muted); }
+
+  /* DOWNLOAD */
+  .dl-btn {
+    display:none; align-items:center; gap:10px; justify-content:center;
+    width:100%; padding:15px; border-radius:3px; border:none;
+    background:var(--red); color:var(--white);
+    font-family:'Barlow Condensed',sans-serif; font-size:1.1rem;
+    font-weight:800; cursor:pointer; letter-spacing:0.1em; text-transform:uppercase;
+    transition:background 0.15s; box-shadow:0 4px 14px rgba(134,0,56,0.3);
+  }
+  .dl-btn:hover { background:var(--red-d); box-shadow:0 6px 18px rgba(134,0,56,0.4); }
+  .dl-btn.visible { display:flex; }
+  .dl-btn:disabled { opacity:0.6; cursor:default; }
+
+  .privacy-note { text-align:center; margin-top:16px; font-family:'DM Mono',monospace; font-size:0.68rem; color:var(--muted); }
+  .privacy-note span { color:var(--green); font-weight:500; }
+
+  footer { background:var(--black); border-top:3px solid var(--red); text-align:center; padding:16px; font-family:'Barlow Condensed',sans-serif; font-size:0.72rem; color:#666; letter-spacing:0.1em; text-transform:uppercase; }
+  footer span { color:var(--red); }
+
+  @media(max-width:600px) {
+    .header-inner { padding:14px 16px; }
+    .main { padding:20px 16px 40px; }
+    .rt-head, .rt-row { grid-template-columns:1fr 90px; }
+    .rt-head span:first-child, .rt-row .fn-old { display:none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="pw-screen">
+  <div class="pw-box">
+    <div class="pw-dbr-logo">DB <span>Roberts</span></div>
+    <div class="pw-tagline">Your Specialty Fastener Distributor</div>
+    <h2>Invoice Renamer &nbsp;·&nbsp; JLD Toolkit</h2>
+    <input class="pw-input" type="password" id="pwInput" placeholder="Enter password" onkeydown="if(event.key==='Enter')checkPw()" autofocus />
+    <button class="pw-btn" onclick="checkPw()">Unlock</button>
+    <div class="pw-error" id="pwErr">&nbsp;</div>
+  </div>
+</div>
+
+<header>
+  <div class="header-inner">
+    <div class="dbr-wordmark">
+      <div class="name">DB <span>Roberts</span></div>
+      <div class="tagline">Your Specialty Fastener Distributor</div>
+    </div>
+    <div class="header-tool">
+      <div class="tool-name">Invoice Renamer</div>
+      <div class="tool-sub">JLD Toolkit &nbsp;·&nbsp; CRM003 → Standard Convention</div>
+    </div>
+  </div>
+</header>
+
+<div class="main">
+
+  <div class="convention-box">
+    <span class="cv-label">Naming Format</span>
+    <span class="cv-format">CUST#_PO######_INVOICE#_MM-DD-YY.pdf</span>
+    <span class="cv-example">e.g.&nbsp; ACC168_PO129005_GNVCQ1C_05-12-26.pdf</span>
+  </div>
+
+  <div class="drop-zone" id="dropZone"
+       ondragover="handleDragOver(event)"
+       ondragleave="handleDragLeave(event)"
+       ondrop="handleDrop(event)">
+    <input type="file" id="fileInput" accept=".pdf" multiple onchange="handleFiles(this.files)">
+    <div class="drop-icon">📄</div>
+    <div class="drop-text">Drop CRM003 Invoices Here</div>
+    <div class="drop-hint">or click to browse &nbsp;·&nbsp; accepts multiple PDFs at once</div>
+  </div>
+
+  <div class="results-header" id="resultsHeader" style="display:none">
+    <span class="results-title">Results</span>
+    <span class="results-stats" id="statsLabel"></span>
+    <button class="clear-btn" onclick="clearAll()">Clear &amp; Start Over</button>
+  </div>
+
+  <div class="results-table" id="resultsTable">
+    <div class="rt-head">
+      <span>Original Filename</span>
+      <span>New Filename</span>
+      <span style="text-align:center">Status</span>
+    </div>
+    <div id="resultRows"></div>
+  </div>
+
+  <button class="dl-btn" id="dlBtn" onclick="downloadAll()">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+    </svg>
+    <span id="dlLabel">Download ZIP</span>
+  </button>
+
+  <p class="privacy-note"><span>🔒 Nothing leaves your browser.</span> &nbsp;PDFs are read and renamed locally — no server, no upload.</p>
+
+</div>
+
+<footer>DB <span>Roberts</span> &nbsp;·&nbsp; Invoice Renamer &nbsp;·&nbsp; ISO 9001 &nbsp;·&nbsp; AS9120</footer>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+var results = [];
+
+function checkPw() {
+  var v = document.getElementById('pwInput').value;
+  var e = document.getElementById('pwErr');
+  if (v === 'InvoiceRenamer2026') {
+    document.getElementById('pw-screen').style.display = 'none';
+  } else {
+    e.textContent = 'Incorrect password \u2014 try again.';
+    document.getElementById('pwInput').value = '';
+    document.getElementById('pwInput').focus();
+    setTimeout(function(){ e.innerHTML = '&nbsp;'; }, 3000);
+  }
+}
+
+function handleDragOver(e) { e.preventDefault(); document.getElementById('dropZone').classList.add('over'); }
+function handleDragLeave(e) { document.getElementById('dropZone').classList.remove('over'); }
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('dropZone').classList.remove('over');
+  handleFiles(e.dataTransfer.files);
+}
+
+function handleFiles(files) {
+  var pdfs = Array.from(files).filter(function(f){ return f.name.toLowerCase().endsWith('.pdf'); });
+  if (!pdfs.length) return;
+  document.getElementById('resultsHeader').style.display = 'flex';
+  document.getElementById('resultsTable').classList.add('visible');
+  document.getElementById('dlBtn').classList.remove('visible');
+  pdfs.forEach(function(file){ processFile(file); });
+}
+
+function processFile(file) {
+  var idx = results.length;
+  results.push({ orig: file.name, newName: '', ok: false, buf: null });
+  addRow(idx, file.name);
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var buf = e.target.result;
+    results[idx].buf = buf;
+    pdfjsLib.getDocument({ data: buf }).promise.then(function(pdf) {
+      var pages = [];
+      var total = Math.min(pdf.numPages, 3);
+      for (var i = 1; i <= total; i++) pages.push(pdf.getPage(i));
+      Promise.all(pages).then(function(pageObjs) {
+        Promise.all(pageObjs.map(function(p){ return p.getTextContent(); })).then(function(contents) {
+          var text = contents.map(function(c){ return c.items.map(function(i){ return i.str; }).join(' '); }).join(' ');
+          var parsed = parseInvoice(text);
+          if (parsed.ok) {
+            results[idx].newName = parsed.name;
+            results[idx].ok = true;
+            updateRow(idx, parsed.name, 'ok');
+          } else {
+            results[idx].ok = false;
+            updateRow(idx, 'Could not extract: ' + parsed.missing.join(', '), 'err');
+          }
+          updateStats();
+        });
+      });
+    }).catch(function(err){
+      updateRow(idx, 'PDF read error: ' + err.message, 'err');
+      updateStats();
+    });
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseInvoice(text) {
+  var custMatch = text.match(/Sold\s*To[:\s]+.*?([A-Z]{2,}\d+)/i) ||
+                  text.match(/\b(ACC\d+|[A-Z]{2,4}\d{3,})\b/i);
+  var poMatch   = text.match(/P\.?\s*O\.?\s*#?\s*[:\-]?\s*([A-Z0-9]{4,})/i) ||
+                  text.match(/Purchase\s*Order\s*[:\-]?\s*([A-Z0-9]{4,})/i);
+  var invMatch  = text.match(/Inv\.?\s*No\.?\s*[:\-]?\s*([A-Z0-9]{5,})/i) ||
+                  text.match(/Invoice\s*(?:No|Number|#)\.?\s*[:\-]?\s*([A-Z0-9]{5,})/i);
+  var dtMatch   = text.match(/Inv\.?\s*Dt\.?\s*[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i) ||
+                  text.match(/Invoice\s*Date\s*[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i) ||
+                  text.match(/Date\s*[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
+
+  var missing = [];
+  if (!custMatch) missing.push('Customer#');
+  if (!poMatch)   missing.push('PO#');
+  if (!invMatch)  missing.push('Invoice#');
+  if (!dtMatch)   missing.push('Date');
+  if (missing.length) return { ok: false, missing: missing };
+
+  var cust = custMatch[1].trim().toUpperCase();
+  var po   = poMatch[1].trim().replace(/[^A-Z0-9]/gi,'');
+  var inv  = invMatch[1].trim().toUpperCase().replace(/^INV/i,'');
+  var dt   = dtMatch[1].trim().replace(/\//g,'-').replace(/\-(\d{4})$/, function(m,y){ return '-'+y.slice(-2); });
+  return { ok: true, name: cust + '_PO' + po + '_' + inv + '_' + dt + '.pdf' };
+}
+
+function addRow(idx, origName) {
+  var row = document.createElement('div');
+  row.className = 'rt-row processing';
+  row.id = 'row-' + idx;
+  row.innerHTML = '<span class="fn-old">' + origName + '</span>' +
+    '<span class="fn-new" id="new-' + idx + '">Reading\u2026</span>' +
+    '<span style="text-align:center"><span class="status-pill pill-spin" id="pill-' + idx + '">Working</span></span>';
+  document.getElementById('resultRows').appendChild(row);
+}
+
+function updateRow(idx, newName, status) {
+  var row    = document.getElementById('row-' + idx);
+  var newCell= document.getElementById('new-' + idx);
+  var pill   = document.getElementById('pill-' + idx);
+  if (status === 'ok') {
+    row.className = 'rt-row ok';
+    newCell.className = 'fn-new';
+    newCell.textContent = newName;
+    pill.className = 'status-pill pill-ok';
+    pill.textContent = '✓ Ready';
+  } else {
+    row.className = 'rt-row err';
+    newCell.className = 'fn-err';
+    newCell.textContent = newName;
+    pill.className = 'status-pill pill-err';
+    pill.textContent = '✗ Error';
+  }
+}
+
+function updateStats() {
+  var done  = results.filter(function(r){ return r.newName !== ''; }).length;
+  var good  = results.filter(function(r){ return r.ok; }).length;
+  var bad   = results.filter(function(r){ return r.newName !== '' && !r.ok; }).length;
+  document.getElementById('statsLabel').textContent =
+    done + ' of ' + results.length + ' processed' + (bad ? ' · ' + bad + ' error' + (bad>1?'s':'') : '');
+  if (good > 0 && done === results.length) {
+    document.getElementById('dlBtn').classList.add('visible');
+    document.getElementById('dlLabel').textContent = good === 1 ? 'Download Renamed PDF' : 'Download ZIP (' + good + ' files)';
+  }
+}
+
+async function downloadAll() {
+  var btn  = document.getElementById('dlBtn');
+  btn.disabled = true;
+  document.getElementById('dlLabel').textContent = 'Preparing\u2026';
+  var good = results.filter(function(r){ return r.ok && r.buf; });
+  if (good.length === 1) {
+    var blob = new Blob([good[0].buf], { type:'application/pdf' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = good[0].newName; a.click();
+  } else {
+    var zip = new JSZip();
+    good.forEach(function(r){ zip.file(r.newName, r.buf); });
+    var blob = await zip.generateAsync({ type:'blob' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'DBR_renamed_invoices.zip'; a.click();
+  }
+  btn.disabled = false;
+  document.getElementById('dlLabel').textContent = good.length === 1 ? 'Download Renamed PDF' : 'Download ZIP (' + good.length + ' files)';
+}
+
+function clearAll() {
+  results = [];
+  document.getElementById('resultRows').innerHTML = '';
+  document.getElementById('resultsTable').classList.remove('visible');
+  document.getElementById('resultsHeader').style.display = 'none';
+  document.getElementById('dlBtn').classList.remove('visible');
+  document.getElementById('fileInput').value = '';
+}
+</script>
+</body>
+</html>
